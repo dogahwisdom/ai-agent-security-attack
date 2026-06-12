@@ -57,8 +57,9 @@ print("submission.csv written", submission.stat().st_size, "bytes")
                 "source": [
                     "# JED Attack Submission\n",
                     "\n",
-                    "Multi-step red-team attack via `MultiStepExplorer` — a modular Go-Explore pipeline "
-                    "for reproducible tool-use failures in agent environments.\n",
+                    "Multi-step red-team attack via `MultiStepExplorer` — "
+                    "a modular Go-Explore pipeline for reproducible "
+                    "tool-use failures in agent environments.\n",
                 ],
             },
             {
@@ -71,7 +72,9 @@ print("submission.csv written", submission.stat().st_size, "bytes")
                     "\n",
                     "sys.argv = [sys.argv[0]]\n",
                     "\n",
-                    "for candidate in glob.glob('/kaggle/input/**/kaggle_evaluation', recursive=True):\n",
+                    "for candidate in glob.glob(\n",
+                    "    '/kaggle/input/**/kaggle_evaluation', recursive=True\n",
+                    "):\n",
                     "    dataset_root = str(Path(candidate).parent)\n",
                     "    if dataset_root not in sys.path:\n",
                     "        sys.path.insert(0, dataset_root)\n",

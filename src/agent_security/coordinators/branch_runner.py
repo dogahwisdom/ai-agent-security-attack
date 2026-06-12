@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Any
 
 from aicomp_sdk.attacks.contracts import AttackCandidate
 from aicomp_sdk.core.env.api import AttackEnvProtocol
