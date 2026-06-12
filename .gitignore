@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+
+# Local secrets and caches
+.env
+*.log
+.DS_Store
+
+# Competition data (download via scripts/download_competition.sh)
+data/
+evaluation_artifacts/
+submission/
+
+# IDE
+.idea/
+.vscode/
+*.swp
