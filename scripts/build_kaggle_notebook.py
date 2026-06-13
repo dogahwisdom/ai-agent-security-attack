@@ -57,9 +57,8 @@ print("submission.csv written", submission.stat().st_size, "bytes")
                 "source": [
                     "# JED Attack Submission\n",
                     "\n",
-                    "Multi-step red-team attack via `MultiStepExplorer` — "
-                    "a modular Go-Explore pipeline for reproducible "
-                    "tool-use failures in agent environments.\n",
+                    "Targeted multi-phase red-team attack using predicate-verified "
+                    "prompt templates (exfiltration, confused deputy, multi-step).\n",
                 ],
             },
             {
