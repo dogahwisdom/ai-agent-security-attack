@@ -51,6 +51,8 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.ruff.lint.per-file-ignores]
 "scripts/build_kaggle_notebook.py" = ["E501"]
 "src/agent_security/exploration/attack_templates.py" = ["E501"]
+"src/agent_security/exploration/elite_prompts.py" = ["E501"]
+"src/agent_security/algorithms/elite_exfil_engine.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"
