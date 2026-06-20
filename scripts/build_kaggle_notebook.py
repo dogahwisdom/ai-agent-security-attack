@@ -57,8 +57,8 @@ print("submission.csv written", submission.stat().st_size, "bytes")
                 "source": [
                     "# JED Attack Submission\n",
                     "\n",
-                    "Targeted multi-phase red-team attack using predicate-verified "
-                    "prompt templates (exfiltration, confused deputy, multi-step).\n",
+                    "Targeted replay-dense exfil strategy from top public LB notebooks "
+                    "(guide28_static980_c1, ~980 single-hop candidates).\n",
                 ],
             },
             {

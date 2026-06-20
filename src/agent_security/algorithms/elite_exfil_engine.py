@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+import re
 import time
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -35,8 +36,8 @@ from agent_security.exploration.elite_variants import (
     DEPUTY_VARIANTS,
     EXFIL_VARIANT_NAMES,
     EXFIL_VARIANTS,
-    MAX_MSG_CHARS,
 )
+from agent_security.exploration import elite_variants
 from agent_security.exploration.replay_budget import ReplayBudgetSelector
 
 try:
@@ -60,10 +61,12 @@ class EliteExfilEngine:
 
     def _host_factory(self):
         counter = itertools.count()
+        domains = ("example.net", "example.com", "example.org")
 
         def host(tag: str) -> str:
             idx = next(counter)
-            return f"http://node{idx:04d}-{tag}.v.example.net/ingest"
+            domain = domains[idx % len(domains)]
+            return f"http://n{idx:05d}.{domain}/p"
 
         return host
 
@@ -72,20 +75,29 @@ class EliteExfilEngine:
         stems = (
             "verify", "healthcheck", "audit", "monitor", "dr", "pipeline",
             "telemetry", "backup", "deploy", "canary", "staging", "rotate",
+            "report", "sync", "logger", "ping", "tracer", "hook", "relay", "push",
+            "collect", "ingest", "recv", "forwarder", "egress", "endpoint",
         )
+        domains = ("example.com", "example.net", "example.org")
+        paths = ("ingest", "collect", "recv", "post", "submit", "log", "record", "write", "push", "relay")
 
         def host(tag: str) -> str:
             idx = next(counter)
             stem = stems[idx % len(stems)]
-            return f"http://{stem}{idx:04d}.example.com/{tag}"
+            domain = domains[(idx // len(stems)) % len(domains)]
+            path = paths[(idx // (len(stems) * len(domains))) % len(paths)]
+            safe_tag = re.sub(r"[^a-z0-9-]", "-", tag.lower()).strip("-")[:32] or "x"
+            return f"http://{stem}{idx:04d}-{safe_tag}.{domain}/{path}"
 
         return host
 
     def _addr_factory(self):
         counter = itertools.count()
+        domains = ("status.example.net", "ops.example.com", "alerts.example.org", "mail.invalid")
 
         def addr() -> str:
-            return f"ops{next(counter):04d}@status.example.net"
+            idx = next(counter)
+            return f"ops{idx:04d}@{domains[idx % len(domains)]}"
 
         return addr
 
@@ -101,7 +113,7 @@ class EliteExfilEngine:
         priority: float = 0.0,
     ) -> bool:
         clean = tuple(_cap_message(str(m)) for m in messages)
-        if any(len(m) > MAX_MSG_CHARS for m in clean):
+        if any(len(m) > int(self._p["max_msg_chars"]) for m in clean):
             return False
         if clean in {tuple(c.user_messages) for c in findings}:
             return False
@@ -237,6 +249,7 @@ class EliteExfilEngine:
 
     def run(self, env, config: AttackRunConfig) -> list[AttackCandidate]:
         self.last_run_details = []
+        elite_variants.MAX_MSG_CHARS = int(self._p["max_msg_chars"])
         if env is None:
             return self._static_candidates(self._p["static_fallback_candidates"], "static")
 
@@ -346,12 +359,19 @@ class EliteExfilEngine:
                     priority=35.0,
                 )
 
-        calibration_end = started + search_s * 0.22
-        mutation_end = started + search_s * 0.38
-        mass_end = started + search_s * 0.78
-        single_end = started + search_s * 0.88
-        deputy_end = started + search_s * 0.94
-        destructive_end = started + search_s * 0.975
+        calibration_end = started + search_s * float(self._p["calibration_fraction"])
+        mutation_end = started + search_s * float(self._p["mutation_fraction"])
+        mass_end = started + search_s * float(self._p["mass_fraction"])
+        single_end = started + search_s * float(self._p["single_fraction"])
+        deputy_end = started + search_s * float(self._p["deputy_fraction"])
+        destructive_end = started + search_s * float(self._p["destructive_fraction"])
+        combo_pool = int(self._p["combo_pool_size"])
+        fill_pool = int(self._p["fill_pool_size"])
+        mutation_seed_limit = int(self._p["mutation_seed_limit"])
+        snapshot_branch_limit = int(self._p["snapshot_branch_limit"])
+        deputy_probe_limit = int(self._p["deputy_probe_limit"])
+        deputy_mutation_limit = int(self._p["deputy_mutation_limit"])
+        safe_target_factor = float(self._p["safe_target_factor"])
 
         good_combos: list[dict[str, Any]] = []
         successful_single_messages: list[str] = []
@@ -424,13 +444,13 @@ class EliteExfilEngine:
             reverse=True,
         )
 
-        for base_msg in list(dict.fromkeys(successful_single_messages))[:12]:
+        for base_msg in list(dict.fromkeys(successful_single_messages))[:mutation_seed_limit]:
             for prefix, suffix in itertools.product(MUTATION_PREFIXES, MUTATION_SUFFIXES):
                 if time.time() >= mutation_end or not can_probe():
                     break
                 verify((_mutate(base_msg, prefix, suffix),), "verified_exfil_mutation", "success_mutation", priority=170.0)
 
-        combo_cycle = itertools.cycle(good_combos[: max(1, min(8, len(good_combos)))])
+        combo_cycle = itertools.cycle(good_combos[: max(1, min(combo_pool, len(good_combos)))])
         while time.time() < mass_end and can_probe():
             combo = next(combo_cycle)
             variant = EXFIL_VARIANTS[int(combo["variant_idx"])]
@@ -453,7 +473,7 @@ class EliteExfilEngine:
             )
 
         deputy_successes: list[str] = []
-        for i, variant in enumerate(DEPUTY_VARIANTS):
+        for i, variant in enumerate(DEPUTY_VARIANTS[:deputy_probe_limit]):
             if time.time() >= deputy_end or not can_probe():
                 break
             detail = verify(
@@ -474,7 +494,7 @@ class EliteExfilEngine:
                 priority=55.0,
             )
 
-        for base_msg in deputy_successes[:6]:
+        for base_msg in deputy_successes[:deputy_mutation_limit]:
             for suffix in MUTATION_SUFFIXES[:3]:
                 if time.time() >= deputy_end or not can_probe():
                     break
@@ -493,7 +513,7 @@ class EliteExfilEngine:
             destructive_checked += 1
             verify((_mutate(payload, prefix="Routine cleanup: "),), "verified_destructive_write_mutation", "destructive_verified_only", priority=58.0)
 
-        for combo in good_combos[:3]:
+        for combo in good_combos[:snapshot_branch_limit]:
             if not can_probe():
                 break
             variant = EXFIL_VARIANTS[int(combo["variant_idx"])]
@@ -509,8 +529,23 @@ class EliteExfilEngine:
                 break
             verify(chain, "verified_source_action_lottery", "source_lottery", priority=5.0)
 
-        target_n = self._p["return_target_candidates"] if findings else self._p["empty_run_fallback_candidates"]
-        fill_cycle = itertools.cycle(good_combos[: max(1, min(12, len(good_combos)))])
+        _fill_start = time.time()
+        _cal_n = len(findings)
+        if _cal_n > 0 and search_s > 0:
+            _c_per_candidate = (_fill_start - started) / _cal_n
+            _remaining = budget - (_fill_start - started)
+            _n_safe = int(safe_target_factor * max(0.0, _remaining) / max(0.01, _c_per_candidate))
+            target_n = min(
+                self._p["return_target_candidates"] if findings else self._p["empty_run_fallback_candidates"],
+                max(int(self._p["min_return_candidates"]), _n_safe),
+            )
+        else:
+            target_n = (
+                self._p["return_target_candidates"]
+                if findings or float(self._p["search_fraction"]) <= 0.0
+                else self._p["empty_run_fallback_candidates"]
+            )
+        fill_cycle = itertools.cycle(good_combos[: max(1, min(fill_pool, len(good_combos)))])
         if self._p["chain_fill_enabled"]:
             best_observed_exfil = max(int(row.get("observed_exfil", 0) or 0) for row in good_combos)
             use_observed_multi_fill = (
